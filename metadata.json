@@ -1,0 +1,5 @@
+{
+  "name": "Arctic Pollution Monitor",
+  "description": "A real-time MVP application for monitoring pollution in the Arctic using simulated satellite data and AI analysis. This app displays a map with a moving satellite, a live feed of satellite imagery, and overlays of detected pollution zones with detailed information.",
+  "requestFramePermissions": []
+}
