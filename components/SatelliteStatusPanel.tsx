@@ -1,14 +1,14 @@
 
 import React, { useRef, useEffect } from 'react';
-import { SatellitePosition, LogEntry, AppState } from '../types';
+import { AppState, LogEntry, SatellitePosition } from '../types';
 
 interface SatelliteStatusPanelProps {
   appState: AppState;
   satellitePosition: SatellitePosition;
-  currentImage: string;
   logs: LogEntry[];
   onStart: () => void;
   onStop: () => void;
+  videoRef: React.RefObject<HTMLVideoElement>;
 }
 
 const StateIndicator: React.FC<{ state: AppState }> = ({ state }) => {
@@ -39,10 +39,10 @@ const StateIndicator: React.FC<{ state: AppState }> = ({ state }) => {
 const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
   appState,
   satellitePosition,
-  currentImage,
   logs,
   onStart,
   onStop,
+  videoRef,
 }) => {
   const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -83,11 +83,15 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
       <div className="flex-shrink-0">
          <h3 className="font-semibold mb-2">LIVE SATELLITE FEED</h3>
          <div className="aspect-square bg-gray-900 rounded-md overflow-hidden border-2 border-gray-700">
-          {currentImage ? (
-            <img src={currentImage} alt="Satellite Feed" className="w-full h-full object-cover"/>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-500">Awaiting signal...</div>
-          )}
+           <video
+             ref={videoRef}
+             src="/demo_video.mp4"
+             className="w-full h-full object-cover"
+             autoPlay
+             loop
+             muted
+             playsInline
+           />
         </div>
       </div>
 

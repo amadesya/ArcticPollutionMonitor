@@ -1,22 +1,61 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { analyzeImage, imageToBase64 } from './services/geminiService';
-import { PollutionData, SatellitePosition, LogEntry, AppState } from './types';
+import { analyzeImage } from './services/geminiService';
 import MapComponent from './components/MapComponent';
 import SatelliteStatusPanel from './components/SatelliteStatusPanel';
 import Header from './components/Header';
+import { AppState, LogEntry, PollutionData, SatellitePosition } from './types';
 
 const App: React.FC = () => {
   const [satellitePosition, setSatellitePosition] = useState<SatellitePosition>({ lat: 80.0, lng: 0.0, heading: 0 });
   const [pollutionData, setPollutionData] = useState<PollutionData[]>([]);
-  const [currentImage, setCurrentImage] = useState<string>('');
   const [appState, setAppState] = useState<AppState>(AppState.Stopped);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
   const simulationIntervalRef = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
     setLogs(prev => [{ timestamp: new Date(), message, type }, ...prev.slice(0, 99)]);
+  }, []);
+
+  const captureFrame = useCallback((): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const video = videoRef.current;
+      if (!video) {
+        return reject("Video element not found");
+      }
+
+      const drawFrame = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return reject("Could not get canvas context");
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        resolve(dataUrl.split(',')[1]);
+      };
+
+      if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+        drawFrame();
+      } else {
+        const onCanPlay = () => {
+          video.removeEventListener('canplay', onCanPlay);
+          video.removeEventListener('error', onError);
+          drawFrame();
+        };
+        const onError = (e: Event) => {
+          video.removeEventListener('canplay', onCanPlay);
+          video.removeEventListener('error', onError);
+          reject(`Video element failed to load: ${e.type}`);
+        };
+        video.addEventListener('canplay', onCanPlay);
+        video.addEventListener('error', onError);
+      }
+    });
   }, []);
 
   const runSimulationStep = useCallback(async () => {
@@ -33,17 +72,15 @@ const App: React.FC = () => {
         return { lat: clampedLat, lng: newLng, heading: newHeading };
     });
 
-    // 2. Fetch "satellite" image
-    const imageUrl = `https://picsum.photos/seed/${Date.now()}/512/512`;
-    setCurrentImage(imageUrl);
-    addLog('Acquired new satellite image.');
-
     try {
+        // 2. Capture frame from video feed
+        addLog('Capturing frame from live feed...');
+        const base64Image = await captureFrame();
+        
         // 3. Analyze image with Gemini
         addLog('Analyzing image for pollution signatures...');
         setAppState(AppState.Analyzing);
         
-        const base64Image = await imageToBase64(imageUrl);
         const analysisResult = await analyzeImage(base64Image);
 
         if (analysisResult && analysisResult.length > 0) {
@@ -54,7 +91,7 @@ const App: React.FC = () => {
         }
     } catch (error) {
         console.error("Analysis failed:", error);
-        addLog("AI analysis failed. Using mock data for demo.", 'error');
+        addLog(`AI analysis failed. ${error instanceof Error ? error.message : 'See console for details.'}`, 'error');
         // Fallback to mock data on error
         const mockPollution: PollutionData[] = [
           {
@@ -69,9 +106,10 @@ const App: React.FC = () => {
         ];
         setPollutionData(prev => [...prev.filter(p => Date.now() - p.timestamp < 60000), ...mockPollution]);
     } finally {
-        setAppState(appState === AppState.Stopped ? AppState.Stopped : AppState.Idle);
+        // FIX: Use functional update to avoid stale state and race conditions.
+        setAppState(currentAppState => currentAppState === AppState.Stopped ? AppState.Stopped : AppState.Idle);
     }
-  }, [addLog, appState]);
+  }, [addLog, captureFrame]);
 
   const startSimulation = useCallback(() => {
     addLog('Starting real-time monitoring sequence.', 'success');
@@ -107,10 +145,10 @@ const App: React.FC = () => {
         <SatelliteStatusPanel
           appState={appState}
           satellitePosition={satellitePosition}
-          currentImage={currentImage}
           logs={logs}
           onStart={startSimulation}
           onStop={stopSimulation}
+          videoRef={videoRef}
         />
       </div>
     </div>

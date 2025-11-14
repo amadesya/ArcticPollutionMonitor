@@ -1,10 +1,7 @@
 
 import React, { useEffect, useRef } from 'react';
-import L from 'leaflet';
+import * as L from 'leaflet';
 import { PollutionData, SatellitePosition } from '../types';
-
-// Declare leaflet to avoid TypeScript errors with the global L object
-declare const L: any;
 
 interface MapComponentProps {
   satellitePosition: SatellitePosition;
@@ -20,7 +17,7 @@ const satelliteSVG = `
 
 const satelliteIcon = L.divIcon({
   html: satelliteSVG,
-  className: 'text-cyan-400 transform -rotate-45',
+  className: 'text-cyan-400',
   iconSize: [48, 48],
   iconAnchor: [24, 24],
 });
@@ -56,19 +53,27 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
     const map = mapRef.current;
     if (!map) return;
 
+    // FIX: Corrected the setView options. The 'pan' property is invalid; animation duration is set directly with the 'duration' property.
     map.setView([satellitePosition.lat, satellitePosition.lng], map.getZoom(), {
       animate: true,
-      pan: { duration: 1 }
+      duration: 1
     });
 
     if (!satelliteMarkerRef.current) {
       satelliteMarkerRef.current = L.marker(
         [satellitePosition.lat, satellitePosition.lng],
-        { icon: satelliteIcon, rotationAngle: satellitePosition.heading }
+        { icon: satelliteIcon }
       ).addTo(map);
     } else {
       satelliteMarkerRef.current.setLatLng([satellitePosition.lat, satellitePosition.lng]);
-      satelliteMarkerRef.current.setRotationAngle(satellitePosition.heading);
+    }
+
+    // Rotate icon element manually
+    const iconElement = satelliteMarkerRef.current.getElement();
+    if (iconElement) {
+        // The SVG points diagonally, so -45 degrees makes it point "up" (north) for a 0 heading
+        iconElement.style.transform = `rotate(${satellitePosition.heading - 45}deg)`;
+        iconElement.style.transformOrigin = 'center';
     }
   }, [satellitePosition]);
   
@@ -80,7 +85,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
 
     pollutionData.forEach(p => {
       // Leaflet uses [lat, lng], GeoJSON uses [lng, lat]. We need to swap.
-      const leafletCoords = p.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+      // FIX: Cast coordinates to a LatLngTuple to satisfy L.polygon's type requirements.
+      const leafletCoords = p.geometry.coordinates[0].map(coord => [coord[1], coord[0]] as L.LatLngTuple);
       
       const polygon = L.polygon(leafletCoords, {
         color: '#f87171',

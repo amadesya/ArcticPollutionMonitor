@@ -1,15 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { PollutionData } from '../types';
+import { PollutionData } from "../types";
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  console.warn("API_KEY environment variable not set. Using mock data.");
-}
-// This check ensures we don't crash if the API key is not available.
-// In a real environment, this should be handled more gracefully.
-const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
+// FIX: Aligned with coding guidelines. The API key is assumed to be available from process.env.API_KEY, so conditional initialization is removed.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const imageToBase64 = async (imageUrl: string): Promise<string> => {
   const response = await fetch(imageUrl);
@@ -23,10 +17,6 @@ export const imageToBase64 = async (imageUrl: string): Promise<string> => {
 };
 
 export const analyzeImage = async (base64Image: string): Promise<PollutionData[]> => {
-  if (!ai) {
-    throw new Error("Gemini AI client not initialized. Check API Key.");
-  }
-
   const model = "gemini-2.5-flash";
   const prompt = `
     You are an expert satellite image analysis system for environmental monitoring in the Arctic.
