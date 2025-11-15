@@ -16,8 +16,65 @@ const ARCTIC_WEST = -168.825;  // 168° 49' 30" W
 const ARCTIC_SOUTH = 66.55;    // 66° 33' N
 const ARCTIC_NORTH = 90.0;
 
+// Helper to create a small square polygon around a point
+const createSquarePolygon = (lat: number, lng: number, size = 0.1) => {
+    const half = size / 2;
+    return {
+        type: 'Polygon' as 'Polygon',
+        coordinates: [[
+            [lng - half, lat - half],
+            [lng + half, lat - half],
+            [lng + half, lat + half],
+            [lng - half, lat + half],
+            [lng - half, lat - half]
+        ]]
+    };
+};
+
 // === Initial Pollution Data (unchanged) ===
-const initialPollutionData: PollutionData[] = [ /* ... your existing data ... */ ];
+const initialPollutionData: PollutionData[] = [
+  // Barents Sea (Oil)
+  { type: 'Нефтяное', confidence: 0.95, geometry: createSquarePolygon(70.5, 50.1), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Высокий' },
+  { type: 'Нефтяное', confidence: 0.88, geometry: createSquarePolygon(71.2, 55.6), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+  { type: 'Физическое', confidence: 0.82, geometry: createSquarePolygon(69.8, 45.3), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Низкий' },
+  { type: 'Химическое', confidence: 0.91, geometry: createSquarePolygon(72.0, 51.5), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+
+  // Kara Sea (Chemical/Physical)
+  { type: 'Химическое', confidence: 0.98, geometry: createSquarePolygon(75.5, 80.2), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Высокий' },
+  { type: 'Физическое', confidence: 0.78, geometry: createSquarePolygon(77.1, 85.9), timestamp: Date.now(), impactArea: 'Почва', hazardLevel: 'Средний' }, // Near land
+  { type: 'Нефтяное', confidence: 0.85, geometry: createSquarePolygon(76.3, 75.1), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+
+  // Laptev Sea (Physical/Chemical from rivers)
+  { type: 'Физическое', confidence: 0.92, geometry: createSquarePolygon(74.0, 128.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+  { type: 'Химическое', confidence: 0.84, geometry: createSquarePolygon(73.5, 130.5), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Низкий' },
+  
+  // East Siberian Sea
+  { type: 'Нефтяное', confidence: 0.80, geometry: createSquarePolygon(72.5, 165.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Низкий' },
+  { type: 'Физическое', confidence: 0.88, geometry: createSquarePolygon(71.8, 175.2), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+
+  // Beaufort Sea (Canada/Alaska)
+  { type: 'Нефтяное', confidence: 0.96, geometry: createSquarePolygon(70.5, -135.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Высокий' },
+  { type: 'Нефтяное', confidence: 0.89, geometry: createSquarePolygon(71.0, -145.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+  { type: 'Физическое', confidence: 0.79, geometry: createSquarePolygon(69.9, -140.5), timestamp: Date.now(), impactArea: 'Почва', hazardLevel: 'Низкий' },
+
+  // Canadian Archipelago
+  { type: 'Физическое', confidence: 0.85, geometry: createSquarePolygon(75.0, -95.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+  { type: 'Химическое', confidence: 0.90, geometry: createSquarePolygon(78.0, -85.0), timestamp: Date.now(), impactArea: 'Почва', hazardLevel: 'Средний' },
+
+  // Baffin Bay / Greenland Sea
+  { type: 'Нефтяное', confidence: 0.82, geometry: createSquarePolygon(74.0, -60.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Низкий' },
+  { type: 'Физическое', confidence: 0.91, geometry: createSquarePolygon(77.0, -15.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+  { type: 'Химическое', confidence: 0.87, geometry: createSquarePolygon(79.0, -5.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+
+  // Svalbard Area
+  { type: 'Нефтяное', confidence: 0.93, geometry: createSquarePolygon(78.5, 25.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Высокий' },
+  { type: 'Физическое', confidence: 0.86, geometry: createSquarePolygon(79.5, 15.0), timestamp: Date.now(), impactArea: 'Почва', hazardLevel: 'Средний' },
+  { type: 'Химическое', confidence: 0.81, geometry: createSquarePolygon(77.0, 30.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Низкий' },
+  
+  // Central Arctic
+  { type: 'Физическое', confidence: 0.75, geometry: createSquarePolygon(85.0, 90.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Низкий' },
+  { type: 'Нефтяное', confidence: 0.83, geometry: createSquarePolygon(88.0, -10.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
+];
 
 // === New Trajectory: Diagonal over Greenland (NW → SE, 135°) ===
 const GREENLAND_CENTER_LAT = 76.5;     // Mid-latitude of Greenland

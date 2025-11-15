@@ -17,6 +17,13 @@ const POLLUTION_COLORS: Record<PollutionData['type'], string> = {
     'Физическое': '#f97316',
 };
 
+// Fix: Corrected typo from PollulationData to PollutionData.
+const POLLUTION_ICONS: Record<PollutionData['type'], string> = {
+    'Химическое': 'ph-test-tube',
+    'Нефтяное': 'ph-drop',
+    'Физическое': 'ph-trash',
+};
+
 const getPopupContent = (pos: SatellitePosition): string => `
     <div class="font-sans">
         <h3 class="font-bold text-lg border-b border-gray-600 mb-2 pb-1 text-cyan-400">Спутник</h3>
@@ -142,6 +149,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
 
     pollutionData.forEach(p => {
         const color = POLLUTION_COLORS[p.type] || '#ef4444';
+        const iconClass = POLLUTION_ICONS[p.type] || 'ph-question';
         
         const leafletCoords = p.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
 
@@ -167,6 +175,24 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
         polygon.bindPopup(popupHtml, { className: 'map-popup' });
         
         polygon.addTo(pollutionLayer);
+        
+        // --- New Marker Logic ---
+        const center = polygon.getBounds().getCenter();
+        
+        const markerIcon = L.divIcon({
+            html: `
+                <div class="marker-pulse relative flex items-center justify-center w-8 h-8 rounded-full" style="background-color: ${color};">
+                   <i class="ph-bold ${iconClass} text-white text-xl"></i>
+                </div>
+            `,
+            className: '', // Prevents leaflet from adding default styles
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+        });
+
+        const marker = L.marker(center, { icon: markerIcon });
+        marker.bindPopup(popupHtml, { className: 'map-popup' });
+        marker.addTo(pollutionLayer);
     });
   }, [pollutionData]);
 
