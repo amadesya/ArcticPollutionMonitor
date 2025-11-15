@@ -1,10 +1,10 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Arctic Pollution Monitor</title>
+    <title>Монитор Загрязнения Арктики</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
@@ -24,6 +24,18 @@
         background: #2d3748;
         color: #e2e8f0;
         box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+      }
+      .leaflet-tooltip {
+        background-color: #2d3748;
+        color: #e2e8f0;
+        border: 1px solid #4a5568;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-weight: bold;
+      }
+      .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before {
+        border: none; /* Hides the default arrow to keep it clean */
       }
     </style>
   <script type="importmap">

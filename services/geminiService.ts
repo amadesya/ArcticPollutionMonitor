@@ -19,9 +19,9 @@ export const imageToBase64 = async (imageUrl: string): Promise<string> => {
 export const analyzeImage = async (base64Image: string): Promise<PollutionData[]> => {
   const model = "gemini-2.5-flash";
   const prompt = `
-    You are an expert satellite image analysis system for environmental monitoring in the Arctic.
-    Analyze this image for any potential pollution spills like oil slicks or chemical plumes.
-    If you detect any, provide their details. If there are no spills, return an empty array.
+    Вы — экспертная система анализа спутниковых изображений для мониторинга окружающей среды в Арктике.
+    Проанализируйте это изображение на наличие любых потенциальных разливов загрязняющих веществ, таких как нефтяные пятна или химические шлейфы.
+    Если вы обнаружите какие-либо, предоставьте их детали. Если разливов нет, верните пустой массив.
   `;
 
   try {
@@ -45,23 +45,23 @@ export const analyzeImage = async (base64Image: string): Promise<PollutionData[]
           properties: {
             detections: {
               type: Type.ARRAY,
-              description: "An array of detected pollution zones.",
+              description: "Массив обнаруженных зон загрязнения.",
               items: {
                 type: Type.OBJECT,
                 properties: {
                   type: {
                     type: Type.STRING,
-                    description: "The type of pollution (e.g., 'Oil Slick', 'Chemical Plume')."
+                    description: "Тип загрязнения (например, 'Нефтяное пятно', 'Химический шлейф')."
                   },
                   confidence: {
                     type: Type.NUMBER,
-                    description: "Confidence score from 0.0 to 1.0."
+                    description: "Оценка уверенности от 0.0 до 1.0."
                   },
                   geometry: {
                     type: Type.OBJECT,
-                    description: "A GeoJSON Polygon object representing the spill's boundary. Coordinates should be [longitude, latitude].",
+                    description: "Объект GeoJSON Polygon, представляющий границу разлива. Координаты должны быть [долгота, широта].",
                     properties: {
-                        type: { type: Type.STRING, description: "Should be 'Polygon'."},
+                        type: { type: Type.STRING, description: "Должно быть 'Polygon'."},
                         coordinates: { 
                             type: Type.ARRAY, 
                             items: { 
@@ -95,6 +95,6 @@ export const analyzeImage = async (base64Image: string): Promise<PollutionData[]
 
   } catch (error) {
     console.error("Error analyzing image with Gemini:", error);
-    throw new Error("Failed to get analysis from Gemini API.");
+    throw new Error("Не удалось получить анализ от Gemini API.");
   }
 };

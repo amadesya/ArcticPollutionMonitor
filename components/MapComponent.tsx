@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import * as L from 'leaflet';
 import { PollutionData, SatellitePosition } from '../types';
@@ -8,10 +7,13 @@ interface MapComponentProps {
   pollutionData: PollutionData[];
 }
 
-// Satellite Icon SVG
+// A more detailed, modern satellite icon
 const satelliteSVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 256 256">
-  <path fill="currentColor" d="M239.86,183.21,180.3,123.65a20,20,0,0,0-28.29,0l-16,16-36.7-36.71a44,44,0,0,0-62.24,0,43.43,43.43,0,0,0-12.1,28.85L5.42,151.34A20,20,0,0,0,2.6,177.17l29.4,56.83a20,20,0,0,0,25.82,12.83L77.38,241.4a43.43,43.43,0,0,0,28.85-12.1,44,44,0,0,0,0-62.24l36.71-36.7,16,16a20,20,0,0,0,28.29,0l59.56-59.56a20,20,0,0,0,0-28.28ZM101.46,212.54a28,28,0,0,1-39.6,0L24.5,175.18,44,136.25l29.43,29.43a20,20,0,0,0,28.28,0L118,149.37l16.88,16.87ZM88,128,58.57,98.57,97.5,79.14Zm120-47.31-16,16L182,86.63,152.57,57.2,168.9,40.88a4,4,0,0,1,5.66,0l41.29,41.29a4,4,0,0,1,0,5.66Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">
+        <path d="M15 12.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0Z"/>
+        <path d="M12 15.5L9.5 21.5m6.5-6L18.5 21.5M12 9.5V4m3 5.5l5.5-2.5m-11 2.5L4.5 7"/>
+    </g>
 </svg>
 `;
 
@@ -22,17 +24,27 @@ const satelliteIcon = L.divIcon({
   iconAnchor: [24, 24],
 });
 
+const POLLUTION_COLORS: Record<PollutionData['type'], string> = {
+    'Химическое': '#a855f7', // purple-500
+    'Нефтяное': '#ef4444',   // red-500
+    'Физическое': '#f97316', // orange-500
+};
+
+
 const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutionData }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const satelliteMarkerRef = useRef<L.Marker | null>(null);
   const pollutionLayerRef = useRef<L.LayerGroup | null>(null);
+  const animationFrameIdRef = useRef<number | null>(null);
+  const currentPositionRef = useRef<SatellitePosition>(satellitePosition);
 
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
       const map = L.map(mapContainerRef.current, {
         center: [80, 0],
-        zoom: 4,
+        zoom: 3,
+        minZoom: 2, // Allow zooming out further
         zoomControl: false,
       });
 
@@ -52,28 +64,64 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    // FIX: Corrected the setView options. The 'pan' property is invalid; animation duration is set directly with the 'duration' property.
+  
     map.setView([satellitePosition.lat, satellitePosition.lng], map.getZoom(), {
       animate: true,
       duration: 1
     });
-
+  
     if (!satelliteMarkerRef.current) {
-      satelliteMarkerRef.current = L.marker(
+      const marker = L.marker(
         [satellitePosition.lat, satellitePosition.lng],
         { icon: satelliteIcon }
       ).addTo(map);
-    } else {
-      satelliteMarkerRef.current.setLatLng([satellitePosition.lat, satellitePosition.lng]);
-    }
-
-    // Rotate icon element manually
-    const iconElement = satelliteMarkerRef.current.getElement();
-    if (iconElement) {
-        // The SVG points diagonally, so -45 degrees makes it point "up" (north) for a 0 heading
-        iconElement.style.transform = `rotate(${satellitePosition.heading - 45}deg)`;
+      satelliteMarkerRef.current = marker;
+      currentPositionRef.current = satellitePosition;
+      
+      const iconElement = marker.getElement();
+      if (iconElement) {
+        iconElement.style.transform = `rotate(${satellitePosition.heading}deg)`;
         iconElement.style.transformOrigin = 'center';
+      }
+    } else {
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+  
+      const marker = satelliteMarkerRef.current;
+      const startPos = currentPositionRef.current;
+      const targetPos = satellitePosition;
+      const duration = 1000; // 1 second animation
+      const startTime = performance.now();
+  
+      // Calculate shortest angle difference
+      const angleDiff = targetPos.heading - startPos.heading;
+      const shortestAngleDiff = ((angleDiff + 180) % 360) - 180;
+  
+      const animateMarker = (currentTime: number) => {
+        const elapsedTime = currentTime - startTime;
+        const progress = Math.min(elapsedTime / duration, 1);
+  
+        const newLat = startPos.lat + (targetPos.lat - startPos.lat) * progress;
+        const newLng = startPos.lng + (targetPos.lng - startPos.lng) * progress;
+        const newHeading = startPos.heading + shortestAngleDiff * progress;
+  
+        marker.setLatLng([newLat, newLng]);
+        const iconElement = marker.getElement();
+        if (iconElement) {
+          iconElement.style.transform = `rotate(${newHeading}deg)`;
+          iconElement.style.transformOrigin = 'center';
+        }
+  
+        if (progress < 1) {
+          animationFrameIdRef.current = requestAnimationFrame(animateMarker);
+        } else {
+          currentPositionRef.current = targetPos;
+          animationFrameIdRef.current = null;
+        }
+      };
+  
+      animationFrameIdRef.current = requestAnimationFrame(animateMarker);
     }
   }, [satellitePosition]);
   
@@ -84,19 +132,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
     layer.clearLayers();
 
     pollutionData.forEach(p => {
-      // Leaflet uses [lat, lng], GeoJSON uses [lng, lat]. We need to swap.
-      // FIX: Cast coordinates to a LatLngTuple to satisfy L.polygon's type requirements.
+      const color = POLLUTION_COLORS[p.type] || '#ef4444';
       const leafletCoords = p.geometry.coordinates[0].map(coord => [coord[1], coord[0]] as L.LatLngTuple);
       
       const polygon = L.polygon(leafletCoords, {
-        color: '#f87171',
+        color: color,
         weight: 2,
-        fillColor: '#ef4444',
-        fillOpacity: 0.4
+        fillColor: color,
+        fillOpacity: 0.5
+      }).bindTooltip(p.type, {
+        sticky: true,
       }).bindPopup(`
         <div class="font-sans">
-          <h3 class="font-bold text-lg text-red-400 border-b border-gray-600 mb-2 pb-1">${p.type}</h3>
-          <p class="text-sm"><strong class="font-semibold text-gray-300">Confidence:</strong> ${(p.confidence * 100).toFixed(1)}%</p>
+          <h3 class="font-bold text-lg border-b border-gray-600 mb-2 pb-1" style="color: ${color};">${p.type}</h3>
+          <p><strong class="font-semibold text-gray-300">Уверенность:</strong> ${(p.confidence * 100).toFixed(1)}%</p>
+          <p><strong class="font-semibold text-gray-300">Область:</strong> ${p.impactArea}</p>
+          <p><strong class="font-semibold text-gray-300">Опасность:</strong> ${p.hazardLevel}</p>
         </div>
       `);
       layer.addLayer(polygon);

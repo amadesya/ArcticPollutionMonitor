@@ -1,4 +1,3 @@
-
 export interface SatellitePosition {
   lat: number;
   lng: number;
@@ -11,10 +10,12 @@ export interface GeoJSONGeometry {
 }
 
 export interface PollutionData {
-  type: string;
+  type: 'Химическое' | 'Нефтяное' | 'Физическое';
   confidence: number;
   geometry: GeoJSONGeometry;
   timestamp: number;
+  impactArea: 'Вода' | 'Почва';
+  hazardLevel: 'Низкий' | 'Средний' | 'Высокий';
 }
 
 export interface LogEntry {
@@ -28,4 +29,10 @@ export enum AppState {
   Idle = 'IDLE',
   Scanning = 'SCANNING',
   Analyzing = 'ANALYZING'
+}
+
+export interface Filters {
+  type: ('Химическое' | 'Нефтяное' | 'Физическое')[];
+  hazardLevel: ('Низкий' | 'Средний' | 'Высокий')[];
+  impactArea: ('Вода' | 'Почва')[];
 }

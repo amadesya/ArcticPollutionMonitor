@@ -1,6 +1,6 @@
-
 import React, { useRef, useEffect } from 'react';
-import { AppState, LogEntry, SatellitePosition } from '../types';
+import { AppState, LogEntry, SatellitePosition, Filters } from '../types';
+import FilterPanel from './FilterPanel';
 
 interface SatelliteStatusPanelProps {
   appState: AppState;
@@ -8,24 +8,27 @@ interface SatelliteStatusPanelProps {
   logs: LogEntry[];
   onStart: () => void;
   onStop: () => void;
-  videoRef: React.RefObject<HTMLVideoElement>;
+  filters: Filters;
+  onFilterChange: (category: keyof Filters, value: string) => void;
+  onResetFilters: () => void;
+  currentSatelliteImage: string;
 }
 
 const StateIndicator: React.FC<{ state: AppState }> = ({ state }) => {
     let color = 'bg-gray-500';
-    let text = 'STOPPED';
+    let text = 'ОСТАНОВЛЕНО';
     switch (state) {
         case AppState.Idle:
             color = 'bg-blue-500';
-            text = 'IDLE - AWAITING NEXT SCAN';
+            text = 'ОЖИДАНИЕ - СЛЕД. СКАНИРОВАНИЕ';
             break;
         case AppState.Scanning:
             color = 'bg-yellow-500 animate-pulse';
-            text = 'SCANNING AREA';
+            text = 'СКАНИРОВАНИЕ ОБЛАСТИ';
             break;
         case AppState.Analyzing:
             color = 'bg-purple-500 animate-pulse';
-            text = 'ANALYZING IMAGE';
+            text = 'АНАЛИЗ ДАННЫХ';
             break;
     }
     return (
@@ -42,7 +45,10 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
   logs,
   onStart,
   onStop,
-  videoRef,
+  filters,
+  onFilterChange,
+  onResetFilters,
+  currentSatelliteImage,
 }) => {
   const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -55,10 +61,10 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
   const isRunning = appState !== AppState.Stopped;
 
   return (
-    <aside className="w-full md:w-96 bg-gray-800/70 backdrop-blur-md border-l border-gray-700 flex flex-col p-4 space-y-4 overflow-hidden h-1/2 md:h-full">
+    <aside className="w-full md:w-96 bg-gray-800/70 backdrop-blur-md border-l border-gray-700 flex flex-col p-4 space-y-4 md:h-full">
       {/* Controls */}
       <div className="flex-shrink-0">
-        <h2 className="text-lg font-bold text-cyan-400 mb-2">MISSION CONTROL</h2>
+        <h2 className="text-lg font-bold text-cyan-400 mb-2">ЦЕНТР УПРАВЛЕНИЯ</h2>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onStart}
@@ -66,7 +72,7 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
             className="px-4 py-2 bg-green-600 text-white font-semibold rounded-md hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
           >
             <i className="ph-bold ph-play"></i>
-            <span>START</span>
+            <span>СТАРТ</span>
           </button>
           <button
             onClick={onStop}
@@ -74,40 +80,43 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
             className="px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
           >
             <i className="ph-bold ph-stop"></i>
-            <span>STOP</span>
+            <span>СТОП</span>
           </button>
         </div>
       </div>
+
+      <FilterPanel 
+        filters={filters}
+        onFilterChange={onFilterChange}
+        onResetFilters={onResetFilters}
+      />
       
-      {/* Live Feed */}
+      {/* Simulated Image */}
       <div className="flex-shrink-0">
-         <h3 className="font-semibold mb-2">LIVE SATELLITE FEED</h3>
+         <h3 className="font-semibold mb-2">ПОСЛЕДНИЙ СПУТНИКОВЫЙ СНИМОК</h3>
          <div className="aspect-square bg-gray-900 rounded-md overflow-hidden border-2 border-gray-700">
-           <video
-             ref={videoRef}
-             src="/demo_video.mp4"
+           <img
+             src={currentSatelliteImage}
+             alt="Актуальный спутниковый снимок Арктики"
              className="w-full h-full object-cover"
-             autoPlay
-             loop
-             muted
-             playsInline
+             key={currentSatelliteImage}
            />
         </div>
       </div>
 
       {/* Status */}
       <div className="flex-shrink-0 bg-gray-900/50 p-3 rounded-md border border-gray-700">
-        <h3 className="font-semibold mb-2">SYSTEM STATUS</h3>
+        <h3 className="font-semibold mb-2">СТАТУС СИСТЕМЫ</h3>
         <div className="space-y-1 text-sm">
             <StateIndicator state={appState} />
-            <p><strong>Coords:</strong> {satellitePosition.lat.toFixed(4)}, {satellitePosition.lng.toFixed(4)}</p>
-            <p><strong>Heading:</strong> {satellitePosition.heading.toFixed(0)}°</p>
+            <p><strong>Координаты:</strong> {satellitePosition.lat.toFixed(4)}, {satellitePosition.lng.toFixed(4)}</p>
+            <p><strong>Курс:</strong> {satellitePosition.heading.toFixed(0)}°</p>
         </div>
       </div>
       
       {/* Logs */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <h3 className="font-semibold mb-2 flex-shrink-0">EVENT LOG</h3>
+        <h3 className="font-semibold mb-2 flex-shrink-0">ЖУРНАЛ СОБЫТИЙ</h3>
         <div ref={logContainerRef} className="flex-1 bg-gray-900/50 p-2 rounded-md overflow-y-auto border border-gray-700">
           {logs.map(log => (
             <div key={log.timestamp.toISOString() + log.message} className="text-xs mb-1 flex">
