@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { analyzeImage, imageToBase64 } from '../services/geminiService';
 import MapComponent from './MapComponent';
 import SatelliteStatusPanel from './SatelliteStatusPanel';
 import Header from './Header';
-import { AppState, LogEntry, PollutionData, SatellitePosition, Filters } from '../types';
+import { AppState, LogEntry, PollutionData, SatellitePosition, Filters, GeoJSONGeometry } from '../types';
 import MapLegend from './MapLegend';
 
 interface MonitorPageProps {
@@ -93,14 +94,10 @@ const initialPollutionData: PollutionData[] = [
   { type: 'Нефтяное', confidence: 0.83, geometry: createSquarePolygon(88.0, -10.0), timestamp: Date.now(), impactArea: 'Вода', hazardLevel: 'Средний' },
 ];
 
-// === New Trajectory: Diagonal over Greenland (NW → SE, 135°) ===
-const GREENLAND_CENTER_LAT = 76.5;     // Mid-latitude of Greenland
-const GREENLAND_CENTER_LNG = -42.0;    // Approximate center longitude
-
-// Start: Northwest corner of Greenland (high latitude, west side)
+// Start: 70°43'01.7"N 21°36'10.6"W
 const PATROL_START_POINT: SatellitePosition = {
-  lat: 83.0,
-  lng: -70.0,
+  lat: 70.7171,
+  lng: -21.6029,
   heading: 135,
   dataRate: 500.0,
   stepIndex: 0
@@ -123,7 +120,7 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filters, setFilters] = useState<Filters>({ type: [], hazardLevel: [], impactArea: [], confidence: [] });
   const [currentSatelliteImage, setCurrentSatelliteImage] = useState<string>(
-    `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=-71,82,-69,84&bboxSR=4326&size=512,512&format=jpg&f=image`
+    `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=-22.6,70.2,-20.6,71.2&bboxSR=4326&size=512,512&format=jpg&f=image`
   );
 
   const simulationIntervalRef = useRef<number | null>(null);
@@ -137,18 +134,16 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
   }, []);
 
   const startSimulation = useCallback(() => {
-    addLog('Запуск симуляции...', 'success');
     scanCounterRef.current = 0;
     patrolDirectionRef.current = 'forward'; // Reset direction to forward
     setSatellitePosition(PATROL_START_POINT); // Reset satellite to start point
     setAppState(AppState.Idle);
-  }, [addLog]);
+  }, []);
 
   const stopSimulation = useCallback(() => {
-    addLog('Симуляция остановлена.');
     setAppState(AppState.Stopped);
     isAnalyzingRef.current = false;
-  }, [addLog]);
+  }, []);
 
   const handleFilterChange = useCallback((category: keyof Filters, value: string) => {
     setFilters(prev => {
@@ -162,17 +157,13 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
         case 'impactArea': updated.impactArea = toggle(updated.impactArea, value as any); break;
         case 'confidence': updated.confidence = toggle(updated.confidence, value as any); break;
       }
-
-      const total = Object.values(updated).flat().length;
-      addLog(`Фильтр обновлён. Активно: ${total}.`);
       return updated;
     });
-  }, [addLog]);
+  }, []);
 
   const resetFilters = useCallback(() => {
     setFilters({ type: [], hazardLevel: [], impactArea: [], confidence: [] });
-    addLog('Фильтры сброшены.');
-  }, [addLog]);
+  }, []);
 
   const getConfidenceLevel = (value: number): 'Низкая' | 'Средняя' | 'Высокая' => {
     if (value < 0.75) return 'Низкая';
@@ -181,7 +172,8 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
   };
 
   const filteredPollutionData = useMemo(() => {
-    const active = Object.values(filters).some(arr => arr.length > 0);
+    // FIX: Added an Array.isArray check to prevent a runtime error if a filter value is not an array.
+    const active = Object.values(filters).some(arr => Array.isArray(arr) && arr.length > 0);
     if (!active) return pollutionData;
     return pollutionData.filter(p => {
       const type = filters.type.length === 0 || filters.type.includes(p.type);
@@ -192,26 +184,65 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
     });
   }, [pollutionData, filters]);
 
-  const analyzePosition = useCallback(async (pos: SatellitePosition, imageUrl: string) => {
-    addLog('Запрос к нейросети для анализа снимка...');
+  const analyzePosition = useCallback(async (pos: SatellitePosition, imageUrl: string, scanCount: number) => {
+    // On the 3rd analysis, trigger a simulated major detection
+    if (scanCount === 270) {
+        setAppState(AppState.Analyzing);
+        addLog('ИМИТАЦИЯ: AI обнаруживает аномалию на снимке...');
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate analysis time
+
+        const simulatedDetection: PollutionData = {
+            type: 'Нефтяное',
+            confidence: 0.98,
+            geometry: createSquarePolygon(pos.lat + 0.1, pos.lng - 0.1, 0.25), // Place it near the satellite
+            timestamp: Date.now(),
+            impactArea: 'Вода',
+            hazardLevel: 'Высокий'
+        };
+
+        setPollutionData(prev => [...prev, simulatedDetection]);
+        addLog(`ИМИТАЦИЯ: Обнаружен крупный разлив нефти! Координаты добавлены на карту.`, 'success');
+        
+        setAppState(AppState.Idle);
+        return; // Important: skip real API call for this simulated event
+    }
+
     setAppState(AppState.Analyzing);
+    addLog('AI обрабатывает последний спутниковый снимок...');
     try {
       const base64 = await imageToBase64(imageUrl);
-      const result = await analyzeImage(base64);
-      // FIX: Add type guard to ensure result is an array before accessing .length
-      if (Array.isArray(result) && result.length > 0) {
-        const newData: PollutionData[] = result.map(p => ({
-          type: p.type || 'Нефтяное',
-          confidence: p.confidence || 0.8,
-          geometry: p.geometry || { type: 'Polygon', coordinates: [] },
-          timestamp: Date.now(),
-          impactArea: p.impactArea || 'Вода',
-          hazardLevel: p.hazardLevel || 'Средний',
-        }));
-        setPollutionData(prev => [...prev, ...newData]);
-        const zones = getZonePlural(result.length);
-        addLog(`Нейросеть обнаружила ${result.length} ${zones} загрязнения.`, 'success');
+      const detections: Partial<PollutionData>[] = await analyzeImage(base64);
+
+      if (!Array.isArray(detections)) {
+        addLog('Ошибка: API вернуло неожиданный формат данных.', 'error');
+        return;
+      }
+
+      if (detections.length > 0) {
+        // Filter detections to ensure they have a valid geometry that can be rendered, preventing crashes.
+        const validDetections = detections.filter(p =>
+          p && p.geometry && Array.isArray(p.geometry.coordinates) && p.geometry.coordinates.length > 0
+        );
+
+        if (validDetections.length > 0) {
+          const newData: PollutionData[] = validDetections.map(p => ({
+            type: p.type || 'Нефтяное',
+            confidence: p.confidence || 0.8,
+            geometry: p.geometry!, // The filter above makes this safe.
+            timestamp: Date.now(),
+            impactArea: p.impactArea || 'Вода',
+            hazardLevel: p.hazardLevel || 'Средний',
+          }));
+
+          setPollutionData(prev => [...prev, ...newData]);
+          const zones = getZonePlural(newData.length);
+          addLog(`Нейросеть обнаружила ${newData.length} ${zones} загрязнения.`, 'success');
+        } else {
+          // This branch is hit if the detections array was not empty, but all items in it had invalid geometry.
+          addLog('AI-анализ вернул данные в некорректном формате.');
+        }
       } else {
+        // This branch is hit if the detections array was empty from the start.
         addLog('Нейросеть подтвердила: загрязнений на снимке нет.');
       }
     } catch (err) {
@@ -257,13 +288,7 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
         const newDir = isForward ? 'backward' : 'forward';
         patrolDirectionRef.current = newDir;
         step = 0;
-
-        addLog(
-          newDir === 'forward'
-            ? 'Достигнута юго-восточная точка. Возвращение на северо-запад.'
-            : 'Достигнута северо-западная точка. Возвращение на юго-восток.',
-          'success'
-        );
+        // Intentionally not logging direction change to keep log focused on analysis.
       }
 
       // === Прогресс (0..1) ===
@@ -298,20 +323,20 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
         setCurrentSatelliteImage(url);
       }
 
-      addLog(`Спутник: ${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E | Курс: ${heading}°`);
+      // Intentionally not logging satellite position to keep log focused on analysis.
 
       // === Анализ ===
       if (shouldAnalyze && !isAnalyzingRef.current) {
         setAppState(AppState.Scanning);
         isAnalyzingRef.current = true;
-        analyzePosition(pos, url).finally(() => { isAnalyzingRef.current = false; });
+        analyzePosition(pos, url, scanCounterRef.current).finally(() => { isAnalyzingRef.current = false; });
       } else if (!isAnalyzingRef.current) {
         setAppState(AppState.Idle);
       }
 
       return pos;
     });
-  }, [addLog, analyzePosition]);
+  }, [analyzePosition]);
 
   // === Simulation Loop ===
   useEffect(() => {

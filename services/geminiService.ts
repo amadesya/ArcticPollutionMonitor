@@ -109,7 +109,14 @@ export const analyzeImage = async (base64Image: string): Promise<Partial<Polluti
         }
       });
 
-      const jsonText = response.text.trim();
+      let jsonText = response.text.trim();
+      
+      // Robustly extract JSON from potential markdown code block
+      const jsonMatch = jsonText.match(/```(json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch && jsonMatch[2]) {
+        jsonText = jsonMatch[2];
+      }
+      
       const result = JSON.parse(jsonText);
       
       if (result.detections && Array.isArray(result.detections)) {
