@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ArcticPollutionMonitor
 
-# Run and deploy your AI Studio app
+**ArcticPollutionMonitor** — это веб-приложение для мониторинга загрязнений в Арктике с помощью спутниковых снимков. Система использует нейросеть для автоматической классификации типов загрязнений: химическое, нефтяное и физическое.
 
-This contains everything you need to run your app locally.
+## Иллюстрации
 
-View your app in AI Studio: https://ai.studio/apps/drive/1qYg0dWkYrXpoSkB85nDmrsNYz9cPRJTO
+Вот несколько примеров спутниковых изображений загрязнений в Арктике, которые можно использовать для визуализации:
 
-## Run Locally
+- ![Нефтяное загрязнение — спутниковое фото](https://live.staticflickr.com/.../arctic_oil_spill.jpg) — пример нефтяного разлива в арктической реке. :contentReference[oaicite:1]{index=1}  
+- ![Химическое и нефтяное пятно](https://bellona.org/.../arctic_spill.jpg) — спутниковое изображение нефтяного пятна в Арктике.   
+- ![Ситуация в Норильске на спутниковом снимке](https://nature.com/.../norilsk_spill_map.png) — карта разлива около Норильска.   
+- ![Дизельный разлив в Арктике](https://scitechdaily.com/.../arctic_circle_leak.png) — фото разлива дизельного топлива, снятое Copernicus Sentinel-2.   
+- ![Микропластик в Арктике (Колодец Свальбард)](https://copernicus.eu/.../Svalbard_microplastic.jpg) — спутниковое изображение загрязнения микропластиком в архипелаге Шпицберген. :contentReference[oaicite:5]{index=5}  
 
-**Prerequisites:**  Node.js
+## Особенности
 
+- Обработка спутниковых изображений Арктики.  
+- Автоматическое обнаружение и классификация загрязнений:  
+  - Химическое  
+  - Нефтяное  
+  - Физическое (мусор, пластик и др.)  
+- Интерактивный веб-интерфейс для просмотра результатов.  
+- Возможность загрузки собственных снимков для анализа.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+...
+
