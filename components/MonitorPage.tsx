@@ -185,8 +185,8 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
   }, [pollutionData, filters]);
 
   const analyzePosition = useCallback(async (pos: SatellitePosition, imageUrl: string, scanCount: number) => {
-    // On the 3rd analysis, trigger a simulated major detection
-    if (scanCount === 270) {
+    // At 5 seconds, trigger a simulated major detection
+    if (scanCount === 5) {
         setAppState(AppState.Analyzing);
         addLog('ИМИТАЦИЯ: AI обнаруживает аномалию на снимке...');
         await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate analysis time
