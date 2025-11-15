@@ -10,6 +10,23 @@ interface MonitorPageProps {
   onNavigateHome: () => void;
 }
 
+// Helper for Russian pluralization of "зона" (zone)
+const getZonePlural = (number: number): string => {
+    let n = Math.abs(number);
+    n %= 100;
+    if (n >= 5 && n <= 20) {
+        return 'зон';
+    }
+    n %= 10;
+    if (n === 1) {
+        return 'зону';
+    }
+    if (n >= 2 && n <= 4) {
+        return 'зоны';
+    }
+    return 'зон';
+};
+
 // === Arctic Boundaries ===
 const ARCTIC_EAST = 32.07639;  // 32° 4' 35" E
 const ARCTIC_WEST = -168.825;  // 168° 49' 30" W
@@ -175,7 +192,7 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
   }, [pollutionData, filters]);
 
   const analyzePosition = useCallback(async (pos: SatellitePosition, imageUrl: string) => {
-    addLog('Анализ спутникового снимка...');
+    addLog('Запрос к нейросети для анализа снимка...');
     setAppState(AppState.Analyzing);
     try {
       const base64 = await imageToBase64(imageUrl);
@@ -190,13 +207,14 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
           hazardLevel: p.hazardLevel || 'Средний',
         }));
         setPollutionData(prev => [...prev, ...newData]);
-        addLog(`Обнаружено ${result.length} зон загрязнения.`, 'success');
+        const zones = getZonePlural(result.length);
+        addLog(`Нейросеть обнаружила ${result.length} ${zones} загрязнения.`, 'success');
       } else {
-        addLog('Загрязнений не обнаружено.');
+        addLog('Нейросеть подтвердила: загрязнений на снимке нет.');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Неизвестная ошибка';
-      addLog(`Ошибка: ${msg}`, 'error');
+      addLog(`Ошибка анализа нейросетью: ${msg}`, 'error');
     } finally {
       setAppState(AppState.Idle);
     }
