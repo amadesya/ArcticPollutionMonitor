@@ -1,174 +1,266 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { generateMockPollutionData } from '../services/mockPollutionService';
+import { analyzeImage, imageToBase64 } from '../services/geminiService';
 import MapComponent from './MapComponent';
 import SatelliteStatusPanel from './SatelliteStatusPanel';
 import Header from './Header';
 import { AppState, LogEntry, PollutionData, SatellitePosition, Filters } from '../types';
+import MapLegend from './MapLegend';
 
 interface MonitorPageProps {
   onNavigateHome: () => void;
 }
 
-const SATELLITE_IMAGES = [
-  'https://images.unsplash.com/photo-1549144511-85b3f20f8b22?q=80&w=800&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1579033423729-1a04a43b1c6d?q=80&w=800&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1444492417251-9f1265418961?q=80&w=800&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1579586337278-35d997405f2b?q=80&w=800&auto=format&fit=crop'
-];
+// === Arctic Boundaries ===
+const ARCTIC_EAST = 32.07639;  // 32° 4' 35" E
+const ARCTIC_WEST = -168.825;  // 168° 49' 30" W
+const ARCTIC_SOUTH = 66.55;    // 66° 33' N
+const ARCTIC_NORTH = 90.0;
 
+// === Initial Pollution Data (unchanged) ===
+const initialPollutionData: PollutionData[] = [ /* ... your existing data ... */ ];
+
+// === New Trajectory: Diagonal over Greenland (NW → SE, 135°) ===
+const GREENLAND_CENTER_LAT = 76.5;     // Mid-latitude of Greenland
+const GREENLAND_CENTER_LNG = -42.0;    // Approximate center longitude
+
+// Start: Northwest corner of Greenland (high latitude, west side)
+const PATROL_START_POINT: SatellitePosition = {
+  lat: 83.0,
+  lng: -70.0,
+  heading: 135,
+  dataRate: 500.0,
+  stepIndex: 0
+};
+
+// End: Southeast corner (lower latitude, east side)
+const PATROL_END_POINT = {
+  lat: 70.0,
+  lng: -20.0
+};
+
+const PATROL_HEADING = 135; // Southeast
+const SIMULATION_INTERVAL_MS = 1000;
+
+// === Component ===
 const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
-  const [satellitePosition, setSatellitePosition] = useState<SatellitePosition>({ lat: 80.0, lng: 0.0, heading: 45 });
-  const [pollutionData, setPollutionData] = useState<PollutionData[]>([]);
+  const [satellitePosition, setSatellitePosition] = useState<SatellitePosition>(PATROL_START_POINT);
+  const [pollutionData, setPollutionData] = useState<PollutionData[]>(initialPollutionData);
   const [appState, setAppState] = useState<AppState>(AppState.Stopped);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [filters, setFilters] = useState<Filters>({
-    type: [],
-    hazardLevel: [],
-    impactArea: [],
-  });
-  const [currentSatelliteImage, setCurrentSatelliteImage] = useState<string>(SATELLITE_IMAGES[0]);
-  
+  const [filters, setFilters] = useState<Filters>({ type: [], hazardLevel: [], impactArea: [], confidence: [] });
+  const [currentSatelliteImage, setCurrentSatelliteImage] = useState<string>(
+    `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=-71,82,-69,84&bboxSR=4326&size=512,512&format=jpg&f=image`
+  );
+
   const simulationIntervalRef = useRef<number | null>(null);
-  const imageIndexRef = useRef(0);
+  const scanCounterRef = useRef<number>(0);
+  const isAnalyzingRef = useRef<boolean>(false);
+
 
   const addLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
     setLogs(prev => [{ timestamp: new Date(), message, type }, ...prev.slice(0, 99)]);
   }, []);
 
+  const startSimulation = useCallback(() => {
+    addLog('Запуск симуляции...', 'success');
+    scanCounterRef.current = 0;
+    patrolDirectionRef.current = 'forward'; // Reset direction to forward
+    setSatellitePosition(PATROL_START_POINT); // Reset satellite to start point
+    setAppState(AppState.Idle);
+  }, [addLog]);
+
+  const stopSimulation = useCallback(() => {
+    addLog('Симуляция остановлена.');
+    setAppState(AppState.Stopped);
+    isAnalyzingRef.current = false;
+  }, [addLog]);
+
   const handleFilterChange = useCallback((category: keyof Filters, value: string) => {
     setFilters(prev => {
-      const currentValues = prev[category];
-      const newValues = currentValues.includes(value as any)
-        ? currentValues.filter(v => v !== value)
-        : [...currentValues, value as any];
+      const updated = { ...prev };
+      const toggle = <T extends string>(arr: T[], val: T) =>
+        arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
 
-      const updatedFilters = { ...prev, [category]: newValues };
-      const totalActive = updatedFilters.type.length + updatedFilters.hazardLevel.length + updatedFilters.impactArea.length;
-      addLog(`Фильтр обновлен. Активно: ${totalActive}.`);
+      switch (category) {
+        case 'type': updated.type = toggle(updated.type, value as any); break;
+        case 'hazardLevel': updated.hazardLevel = toggle(updated.hazardLevel, value as any); break;
+        case 'impactArea': updated.impactArea = toggle(updated.impactArea, value as any); break;
+        case 'confidence': updated.confidence = toggle(updated.confidence, value as any); break;
+      }
 
-      return updatedFilters;
+      const total = Object.values(updated).flat().length;
+      addLog(`Фильтр обновлён. Активно: ${total}.`);
+      return updated;
     });
   }, [addLog]);
 
   const resetFilters = useCallback(() => {
-    setFilters({ type: [], hazardLevel: [], impactArea: [] });
+    setFilters({ type: [], hazardLevel: [], impactArea: [], confidence: [] });
     addLog('Фильтры сброшены.');
   }, [addLog]);
 
+  const getConfidenceLevel = (value: number): 'Низкая' | 'Средняя' | 'Высокая' => {
+    if (value < 0.75) return 'Низкая';
+    if (value <= 0.9) return 'Средняя';
+    return 'Высокая';
+  };
+
   const filteredPollutionData = useMemo(() => {
-    const hasActiveFilters = filters.type.length > 0 || filters.hazardLevel.length > 0 || filters.impactArea.length > 0;
-
-    if (!hasActiveFilters) {
-      return pollutionData;
-    }
-
+    const active = Object.values(filters).some(arr => arr.length > 0);
+    if (!active) return pollutionData;
     return pollutionData.filter(p => {
-      const typeMatch = filters.type.length === 0 || filters.type.includes(p.type);
-      const hazardMatch = filters.hazardLevel.length === 0 || filters.hazardLevel.includes(p.hazardLevel);
-      const impactMatch = filters.impactArea.length === 0 || filters.impactArea.includes(p.impactArea);
-      return typeMatch && hazardMatch && impactMatch;
+      const type = filters.type.length === 0 || filters.type.includes(p.type);
+      const hazard = filters.hazardLevel.length === 0 || filters.hazardLevel.includes(p.hazardLevel);
+      const area = filters.impactArea.length === 0 || filters.impactArea.includes(p.impactArea);
+      const conf = filters.confidence.length === 0 || filters.confidence.includes(getConfidenceLevel(p.confidence));
+      return type && hazard && area && conf;
     });
   }, [pollutionData, filters]);
 
-  const runSimulationStep = useCallback(() => {
-    addLog('Инициация нового сканирования...');
-    setAppState(AppState.Scanning);
-
-    // 1. Update satellite position
-    setSatellitePosition(prevPos => {
-      // Slower and more logical movement
-      const speed = 0.8; // degrees per step, reduced for slower movement
-      let newHeading = prevPos.heading;
-
-      // Add a small random wobble to the path to make it feel more natural
-      newHeading += (Math.random() - 0.5) * 15;
-
-      // Guide the satellite to stay within a latitude band (e.g., 70 to 88 degrees North)
-      // This creates a more orbital, less random path.
-      if (prevPos.lat > 88) {
-        // If too far north, encourage a turn away from the pole
-        if (newHeading < 90 || newHeading > 270) { // Pointing generally north
-           newHeading += 45;
-        }
-      } else if (prevPos.lat < 70) {
-        // If too far south, encourage a turn toward the pole
-        if (newHeading > 90 && newHeading < 270) { // Pointing generally south
-          newHeading += (Math.random() < 0.5 ? -45 : 45); // Turn north-east or north-west
-        }
-      }
-
-      const headingRad = newHeading * (Math.PI / 180);
-      const latChange = Math.cos(headingRad) * speed;
-      // Longitude change needs to be scaled by latitude to maintain somewhat constant ground speed
-      const lngChange = Math.sin(headingRad) * speed / Math.max(0.1, Math.cos(prevPos.lat * Math.PI / 180));
-
-      let newLat = prevPos.lat + latChange;
-      let newLng = prevPos.lng + lngChange;
-      
-      // Handle crossing the North Pole
-      if (newLat > 90) {
-        newLat = 180 - newLat;
-        newLng += 180;
-        newHeading += 180;
-      }
-      
-      // Handle longitude wrapping
-      if (newLng > 180) { newLng -= 360; }
-      if (newLng < -180) { newLng += 360; }
-      
-      // Normalize heading to be within 0-360 degrees
-      newHeading = (newHeading + 360) % 360;
-
-      const newPos = { lat: newLat, lng: newLng, heading: newHeading };
-
-      addLog(`Спутник переместился на ${newPos.lat.toFixed(2)}, ${newPos.lng.toFixed(2)}`);
-      
-      // 2. Cycle through images
-      imageIndexRef.current = (imageIndexRef.current + 1) % SATELLITE_IMAGES.length;
-      setCurrentSatelliteImage(SATELLITE_IMAGES[imageIndexRef.current]);
-      addLog('Получен новый спутниковый снимок.');
-
-      // 3. Generate simulated pollution data
-      addLog('Генерация симулированных данных о загрязнении...');
-      setAppState(AppState.Analyzing);
-      
-      const analysisResult = generateMockPollutionData(newPos);
-
-      if (analysisResult.length > 0) {
-        setPollutionData(prev => [...prev.filter(p => Date.now() - p.timestamp < 600000), ...analysisResult]);
-        addLog(`Анализ завершен. Обнаружено ${analysisResult.length} симулированных зон загрязнения.`, 'success');
+  const analyzePosition = useCallback(async (pos: SatellitePosition, imageUrl: string) => {
+    addLog('Анализ спутникового снимка...');
+    setAppState(AppState.Analyzing);
+    try {
+      const base64 = await imageToBase64(imageUrl);
+      const result = await analyzeImage(base64);
+      if (result.length > 0) {
+        const newData: PollutionData[] = result.map(p => ({
+          type: p.type || 'Нефтяное',
+          confidence: p.confidence || 0.8,
+          geometry: p.geometry || { type: 'Polygon', coordinates: [] },
+          timestamp: Date.now(),
+          impactArea: p.impactArea || 'Вода',
+          hazardLevel: p.hazardLevel || 'Средний',
+        }));
+        setPollutionData(prev => [...prev, ...newData]);
+        addLog(`Обнаружено ${result.length} зон загрязнения.`, 'success');
       } else {
-        addLog('Анализ завершен. Загрязнений не обнаружено.');
+        addLog('Загрязнений не обнаружено.');
       }
-      
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Неизвестная ошибка';
+      addLog(`Ошибка: ${msg}`, 'error');
+    } finally {
       setAppState(AppState.Idle);
-      return newPos;
-    });
-  }, [addLog]);
-
-  const startSimulation = useCallback(() => {
-    addLog('Запуск последовательности мониторинга.', 'success');
-    setAppState(AppState.Idle);
-    runSimulationStep();
-    simulationIntervalRef.current = window.setInterval(runSimulationStep, 10000); 
-  }, [addLog, runSimulationStep]);
-
-  const stopSimulation = useCallback(() => {
-    addLog('Остановка мониторинга.');
-    setAppState(AppState.Stopped);
-    if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-        simulationIntervalRef.current = null;
     }
   }, [addLog]);
 
+  // === UPDATED: Simulation Step with back-and-forth patrol ===
+const patrolDirectionRef = useRef<'forward' | 'backward'>('forward'); // Убедись, что это объявлено выше
+
+const runSimulationStep = useCallback(() => {
+  scanCounterRef.current += 1;
+  const shouldAnalyze = scanCounterRef.current % 90 === 0;
+
+  setSatellitePosition(prev => {
+    const SPEED_KPH = 700; // Реалистичная скорость (например, разведчик)
+    const INTERVAL_H = SIMULATION_INTERVAL_MS / 3600000; // 1000 мс → 1/3600 часа
+
+    // === Текущие точки: зависят от направления ===
+    const isForward = patrolDirectionRef.current === 'forward';
+    const startPoint = isForward ? PATROL_START_POINT : PATROL_END_POINT;
+    const endPoint   = isForward ? PATROL_END_POINT : PATROL_START_POINT;
+
+    // === Дельты (от старта к концу) ===
+    const dLat = endPoint.lat - startPoint.lat;
+    let dLng = endPoint.lng - startPoint.lng;
+    dLng = ((dLng + 180) % 360 + 360) % 360 - 180; // Кратчайший путь
+
+    // === Расстояние (км) ===
+    const avgLat = (startPoint.lat + endPoint.lat) / 2;
+    const cosLat = Math.cos(avgLat * Math.PI / 180);
+    const distKm = Math.hypot(dLat * 111.32, dLng * 111.32 * cosLat);
+
+    // === Шагов на участок ===
+    const totalSteps = Math.ceil(distKm / (SPEED_KPH * INTERVAL_H));
+
+    // === Шаг ===
+    let step = (prev.stepIndex ?? 0) + 1;
+
+    // === Переключение направления ===
+    if (step >= totalSteps) {
+      const newDir = isForward ? 'backward' : 'forward';
+      patrolDirectionRef.current = newDir;
+      step = 0;
+
+      addLog(
+        newDir === 'forward'
+          ? 'Достигнута юго-восточная точка. Возвращение на северо-запад.'
+          : 'Достигнута северо-западная точка. Возвращение на юго-восток.',
+        'success'
+      );
+    }
+
+    // === Прогресс (0..1) ===
+    const progress = step / totalSteps;
+
+    // === Координаты: линейная интерполяция от start → end ===
+    const lat = startPoint.lat + dLat * progress;
+    let lng = startPoint.lng + dLng * progress;
+    lng = ((lng + 180) % 360 + 360) % 360 - 180; // Нормализация
+
+    // === Курс: 135° вперёд, 315° назад ===
+    const heading = isForward ? PATROL_HEADING : (PATROL_HEADING + 180) % 360;
+
+    const dataRate = 500 + (Math.random() - 0.5) * 50;
+    const pos: SatellitePosition = { lat, lng, heading, dataRate, stepIndex: step };
+
+    // === BBOX (35 км) ===
+    const SCAN_KM = 35;
+    const KM_PER_DEG_LAT = 111.32;
+    const latSpan = SCAN_KM / KM_PER_DEG_LAT;
+    const lngSpan = SCAN_KM / (KM_PER_DEG_LAT * Math.cos(lat * Math.PI / 180));
+
+    const minLng = Math.max(ARCTIC_WEST, lng - lngSpan / 2);
+    const maxLng = Math.min(ARCTIC_EAST, lng + lngSpan / 2);
+    const minLat = Math.max(ARCTIC_SOUTH, lat - latSpan / 2);
+    const maxLat = Math.min(ARCTIC_NORTH, lat + latSpan / 2);
+
+    const bbox = [minLng, minLat, maxLng, maxLat].join(',');
+    const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&size=512,512&format=jpg&f=image`;
+    setCurrentSatelliteImage(url);
+
+    addLog(`Спутник: ${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E | Курс: ${heading}°`);
+
+    // === Анализ ===
+    if (shouldAnalyze && !isAnalyzingRef.current) {
+      setAppState(AppState.Scanning);
+      isAnalyzingRef.current = true;
+      analyzePosition(pos, url).finally(() => { isAnalyzingRef.current = false; });
+    } else if (!isAnalyzingRef.current) {
+      setAppState(AppState.Idle);
+    }
+
+    return pos;
+  });
+}, [addLog, analyzePosition]);
+
+  // === Simulation Loop ===
   useEffect(() => {
-    return () => { // Cleanup on unmount
+    if (appState === AppState.Stopped) {
       if (simulationIntervalRef.current) {
         clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // This is the start/running case
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+    }
+    
+    runSimulationStep();
+    simulationIntervalRef.current = window.setInterval(runSimulationStep, SIMULATION_INTERVAL_MS);
+    
+    // Cleanup on unmount or if appState changes
+    return () => {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
       }
     };
-  }, []);
+  }, [appState, runSimulationStep]);
 
   return (
     <div className="bg-gray-900 text-gray-200 h-screen w-screen flex flex-col font-sans overflow-hidden">
@@ -176,6 +268,9 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
       <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         <div className="h-[50vh] flex-shrink-0 md:flex-1 md:h-auto relative">
           <MapComponent satellitePosition={satellitePosition} pollutionData={filteredPollutionData} />
+          <div className="absolute bottom-2 md:bottom-10 left-2 z-[1000]">
+            <MapLegend />
+          </div>
         </div>
         <SatelliteStatusPanel
           appState={appState}

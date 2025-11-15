@@ -4,6 +4,8 @@ import { Filters } from '../types';
 const POLLUTION_TYPES: Array<'Химическое' | 'Нефтяное' | 'Физическое'> = ['Химическое', 'Нефтяное', 'Физическое'];
 const HAZARD_LEVELS: Array<'Низкий' | 'Средний' | 'Высокий'> = ['Низкий', 'Средний', 'Высокий'];
 const IMPACT_AREAS: Array<'Вода' | 'Почва'> = ['Вода', 'Почва'];
+const CONFIDENCE_LEVELS: Array<'Низкая' | 'Средняя' | 'Высокая'> = ['Низкая', 'Средняя', 'Высокая'];
+
 
 interface FilterPanelProps {
   filters: Filters;
@@ -33,7 +35,7 @@ const FilterCheckbox: React.FC<CheckboxProps> = ({ label, category, isChecked, o
 const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onFilterChange, onResetFilters }) => {
   const [isOpen, setIsOpen] = useState(true);
   
-  const totalActiveFilters = filters.type.length + filters.hazardLevel.length + filters.impactArea.length;
+  const totalActiveFilters = filters.type.length + filters.hazardLevel.length + filters.impactArea.length + filters.confidence.length;
 
   return (
     <div className="flex-shrink-0 bg-gray-900/50 p-3 rounded-md border border-gray-700">
@@ -76,6 +78,14 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onFilterChange, onRe
             <div className="grid grid-cols-2 gap-2 text-sm">
               {IMPACT_AREAS.map(area => (
                 <FilterCheckbox key={area} label={area} category="impactArea" isChecked={filters.impactArea.includes(area)} onChange={onFilterChange} />
+              ))}
+            </div>
+          </div>
+           <div>
+            <h4 className="text-sm font-semibold text-gray-400 mb-2">Уровень Уверенности</h4>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {CONFIDENCE_LEVELS.map(level => (
+                <FilterCheckbox key={level} label={level} category="confidence" isChecked={filters.confidence.includes(level)} onChange={onFilterChange} />
               ))}
             </div>
           </div>

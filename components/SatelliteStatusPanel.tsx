@@ -61,7 +61,7 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
   const isRunning = appState !== AppState.Stopped;
 
   return (
-    <aside className="w-full md:w-96 bg-gray-800/70 backdrop-blur-md border-l border-gray-700 flex flex-col p-4 space-y-4 md:h-full">
+    <aside className="w-full md:w-96 bg-gray-800/70 backdrop-blur-md border-l border-gray-700 flex flex-col p-4 space-y-4 md:h-full overflow-y-auto">
       {/* Controls */}
       <div className="flex-shrink-0">
         <h2 className="text-lg font-bold text-cyan-400 mb-2">ЦЕНТР УПРАВЛЕНИЯ</h2>
@@ -115,7 +115,7 @@ const SatelliteStatusPanel: React.FC<SatelliteStatusPanelProps> = ({
       </div>
       
       {/* Logs */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-[150px]">
         <h3 className="font-semibold mb-2 flex-shrink-0">ЖУРНАЛ СОБЫТИЙ</h3>
         <div ref={logContainerRef} className="flex-1 bg-gray-900/50 p-2 rounded-md overflow-y-auto border border-gray-700">
           {logs.map(log => (

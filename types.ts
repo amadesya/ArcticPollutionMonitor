@@ -2,6 +2,8 @@ export interface SatellitePosition {
   lat: number;
   lng: number;
   heading: number;
+  dataRate: number;
+  stepIndex?: number;
 }
 
 export interface GeoJSONGeometry {
@@ -35,4 +37,5 @@ export interface Filters {
   type: ('Химическое' | 'Нефтяное' | 'Физическое')[];
   hazardLevel: ('Низкий' | 'Средний' | 'Высокий')[];
   impactArea: ('Вода' | 'Почва')[];
+  confidence: ('Низкая' | 'Средняя' | 'Высокая')[];
 }

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
   <head>
@@ -6,12 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Монитор Загрязнения Арктики</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <style>
       body {
@@ -20,32 +15,56 @@
       .leaflet-container {
         background: #1a202c;
       }
-      .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+
+      /* Leaflet Popup Style */
+      .map-popup .leaflet-popup-content-wrapper {
         background: #2d3748;
         color: #e2e8f0;
         box-shadow: 0 3px 14px rgba(0,0,0,0.4);
-      }
-      .leaflet-tooltip {
-        background-color: #2d3748;
-        color: #e2e8f0;
-        border: 1px solid #4a5568;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
         border-radius: 4px;
-        padding: 6px 10px;
+        padding: 1px; /* Leaflet adds its own padding to .leaflet-popup-content */
+      }
+      .map-popup .leaflet-popup-content {
+        margin: 1rem;
+        width: auto !important;
+        min-width: 200px;
+      }
+      .map-popup .leaflet-popup-tip {
+        background: #2d3748;
+      }
+       .map-popup .leaflet-popup-close-button {
+         color: #cbd5e0;
+         top: 5px;
+         right: 5px;
+       }
+       .map-popup .leaflet-popup-close-button:hover {
+         color: #fff;
+         background: #4a5568;
+       }
+
+      /* Leaflet Tooltip Style */
+      .map-tooltip {
+        background-color: #2d3748 !important;
+        color: #e2e8f0 !important;
+        border: 1px solid #4a5568 !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.4) !important;
+        border-radius: 4px !important;
+        padding: 6px 10px !important;
         font-weight: bold;
       }
-      .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before {
-        border: none; /* Hides the default arrow to keep it clean */
-      }
+      .map-tooltip.leaflet-tooltip-top:before { border-top-color: #2d3748 !important; }
+      .map-tooltip.leaflet-tooltip-bottom:before { border-bottom-color: #2d3748 !important; }
+      .map-tooltip.leaflet-tooltip-left:before { border-left-color: #2d3748 !important; }
+      .map-tooltip.leaflet-tooltip-right:before { border-right-color: #2d3748 !important; }
     </style>
   <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
     "leaflet": "https://aistudiocdn.com/leaflet@^1.9.4",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/",
+    "react/": "https://aistudiocdn.com/react@^18.2.0/",
+    "react": "https://aistudiocdn.com/react@^18.2.0"
   }
 }
 </script>

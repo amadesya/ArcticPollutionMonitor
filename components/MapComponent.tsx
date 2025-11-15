@@ -1,156 +1,172 @@
+
 import React, { useEffect, useRef } from 'react';
-import * as L from 'leaflet';
 import { PollutionData, SatellitePosition } from '../types';
+
+// The Leaflet library is loaded via a <script> tag in index.html,
+// so we declare the global `L` object to make TypeScript aware of it.
+declare const L: any;
 
 interface MapComponentProps {
   satellitePosition: SatellitePosition;
   pollutionData: PollutionData[];
 }
 
-// A more detailed, modern satellite icon
-const satelliteSVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">
-        <path d="M15 12.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0Z"/>
-        <path d="M12 15.5L9.5 21.5m6.5-6L18.5 21.5M12 9.5V4m3 5.5l5.5-2.5m-11 2.5L4.5 7"/>
-    </g>
-</svg>
-`;
-
-const satelliteIcon = L.divIcon({
-  html: satelliteSVG,
-  className: 'text-cyan-400',
-  iconSize: [48, 48],
-  iconAnchor: [24, 24],
-});
-
 const POLLUTION_COLORS: Record<PollutionData['type'], string> = {
-    'Химическое': '#a855f7', // purple-500
-    'Нефтяное': '#ef4444',   // red-500
-    'Физическое': '#f97316', // orange-500
+    'Химическое': '#a855f7',
+    'Нефтяное': '#ef4444',
+    'Физическое': '#f97316',
 };
 
+const getPopupContent = (pos: SatellitePosition): string => `
+    <div class="font-sans">
+        <h3 class="font-bold text-lg border-b border-gray-600 mb-2 pb-1 text-cyan-400">Спутник</h3>
+        <p><strong class="font-semibold text-gray-300">Координаты:</strong> ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}</p>
+        <p><strong class="font-semibold text-gray-300">Передача данных:</strong> ${pos.dataRate.toFixed(1)} Мбит/с</p>
+    </div>`;
 
 const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutionData }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const satelliteMarkerRef = useRef<L.Marker | null>(null);
-  const pollutionLayerRef = useRef<L.LayerGroup | null>(null);
+  const mapRef = useRef<any | null>(null);
+  const satelliteMarkerRef = useRef<any | null>(null);
+  const pollutionLayerRef = useRef<any | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
-  const currentPositionRef = useRef<SatellitePosition>(satellitePosition);
 
+  // Effect for initializing the map
   useEffect(() => {
-    if (mapContainerRef.current && !mapRef.current) {
-      const map = L.map(mapContainerRef.current, {
-        center: [80, 0],
+    const mapContainer = mapContainerRef.current;
+    let resizeObserver: ResizeObserver | null = null;
+    
+    if (mapContainer && !mapRef.current && typeof L !== 'undefined') {
+      const map = L.map(mapContainer, {
+        center: [80, -70],
         zoom: 3,
-        minZoom: 2, // Allow zooming out further
-        zoomControl: false,
+        minZoom: 2,
+        zoomControl: false, 
+        attributionControl: false,
       });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 19
+      L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        attribution: 'Map data &copy;2024 Google',
+        maxZoom: 20,
       }).addTo(map);
       
       L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-      mapRef.current = map;
       pollutionLayerRef.current = L.layerGroup().addTo(map);
+      mapRef.current = map;
+
+      resizeObserver = new ResizeObserver(() => {
+        map.invalidateSize();
+      });
+      resizeObserver.observe(mapContainer);
+    }
+    
+    return () => {
+        if (resizeObserver && mapContainer) {
+          resizeObserver.unobserve(mapContainer);
+        }
+        if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+        }
     }
   }, []);
 
+  // Effect for creating and animating the satellite marker
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-  
-    map.setView([satellitePosition.lat, satellitePosition.lng], map.getZoom(), {
-      animate: true,
-      duration: 1
-    });
-  
+
     if (!satelliteMarkerRef.current) {
-      const marker = L.marker(
-        [satellitePosition.lat, satellitePosition.lng],
-        { icon: satelliteIcon }
-      ).addTo(map);
-      satelliteMarkerRef.current = marker;
-      currentPositionRef.current = satellitePosition;
+      map.setView([satellitePosition.lat, satellitePosition.lng]);
       
-      const iconElement = marker.getElement();
-      if (iconElement) {
-        iconElement.style.transform = `rotate(${satellitePosition.heading}deg)`;
-        iconElement.style.transformOrigin = 'center';
-      }
+      const satelliteIcon = L.divIcon({
+          html: `
+            <div class="relative flex h-5 w-5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white/50"></span>
+            </div>`,
+          className: '',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+      });
+      
+      const marker = L.marker([satellitePosition.lat, satellitePosition.lng], { 
+          icon: satelliteIcon,
+      }).addTo(map);
+      
+      marker.bindPopup(getPopupContent(satellitePosition), { className: 'map-popup' });
+        
+      satelliteMarkerRef.current = marker;
+      
     } else {
+      satelliteMarkerRef.current.setPopupContent(getPopupContent(satellitePosition));
+      
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
   
       const marker = satelliteMarkerRef.current;
-      const startPos = currentPositionRef.current;
+      const startLatLng = marker.getLatLng();
+      const startPos = { lat: startLatLng.lat, lng: startLatLng.lng };
       const targetPos = satellitePosition;
-      const duration = 1000; // 1 second animation
+      const duration = 1000; // Match the simulation interval for smooth animation
       const startTime = performance.now();
   
-      // Calculate shortest angle difference
-      const angleDiff = targetPos.heading - startPos.heading;
-      const shortestAngleDiff = ((angleDiff + 180) % 360) - 180;
-  
-      const animateMarker = (currentTime: number) => {
+      const animate = (currentTime: number) => {
         const elapsedTime = currentTime - startTime;
         const progress = Math.min(elapsedTime / duration, 1);
   
         const newLat = startPos.lat + (targetPos.lat - startPos.lat) * progress;
         const newLng = startPos.lng + (targetPos.lng - startPos.lng) * progress;
-        const newHeading = startPos.heading + shortestAngleDiff * progress;
-  
-        marker.setLatLng([newLat, newLng]);
-        const iconElement = marker.getElement();
-        if (iconElement) {
-          iconElement.style.transform = `rotate(${newHeading}deg)`;
-          iconElement.style.transformOrigin = 'center';
-        }
+        
+        const newCoords: [number, number] = [newLat, newLng];
+        marker.setLatLng(newCoords);
   
         if (progress < 1) {
-          animationFrameIdRef.current = requestAnimationFrame(animateMarker);
+          animationFrameIdRef.current = requestAnimationFrame(animate);
         } else {
-          currentPositionRef.current = targetPos;
           animationFrameIdRef.current = null;
         }
       };
   
-      animationFrameIdRef.current = requestAnimationFrame(animateMarker);
+      animationFrameIdRef.current = requestAnimationFrame(animate);
     }
   }, [satellitePosition]);
   
+  // Effect for updating the pollution data layer
   useEffect(() => {
-    const layer = pollutionLayerRef.current;
-    if (!layer) return;
+    const pollutionLayer = pollutionLayerRef.current;
+    if (!pollutionLayer) return;
 
-    layer.clearLayers();
+    pollutionLayer.clearLayers();
 
     pollutionData.forEach(p => {
-      const color = POLLUTION_COLORS[p.type] || '#ef4444';
-      const leafletCoords = p.geometry.coordinates[0].map(coord => [coord[1], coord[0]] as L.LatLngTuple);
-      
-      const polygon = L.polygon(leafletCoords, {
-        color: color,
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 0.5
-      }).bindTooltip(p.type, {
-        sticky: true,
-      }).bindPopup(`
-        <div class="font-sans">
-          <h3 class="font-bold text-lg border-b border-gray-600 mb-2 pb-1" style="color: ${color};">${p.type}</h3>
-          <p><strong class="font-semibold text-gray-300">Уверенность:</strong> ${(p.confidence * 100).toFixed(1)}%</p>
-          <p><strong class="font-semibold text-gray-300">Область:</strong> ${p.impactArea}</p>
-          <p><strong class="font-semibold text-gray-300">Опасность:</strong> ${p.hazardLevel}</p>
-        </div>
-      `);
-      layer.addLayer(polygon);
+        const color = POLLUTION_COLORS[p.type] || '#ef4444';
+        
+        const leafletCoords = p.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+
+        const polygon = L.polygon(leafletCoords, {
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.5,
+            weight: 2,
+        });
+
+        polygon.bindTooltip(p.type, {
+            className: 'map-tooltip',
+            sticky: true,
+        });
+
+        const popupHtml = `
+            <div class="font-sans">
+                <h3 class="font-bold text-lg border-b border-gray-600 mb-2 pb-1" style="color: ${color};">${p.type}</h3>
+                <p><strong class="font-semibold text-gray-300">Уверенность:</strong> ${(p.confidence * 100).toFixed(1)}%</p>
+                <p><strong class="font-semibold text-gray-300">Область:</strong> ${p.impactArea}</p>
+                <p><strong class="font-semibold text-gray-300">Опасность:</strong> ${p.hazardLevel}</p>
+            </div>`;
+        polygon.bindPopup(popupHtml, { className: 'map-popup' });
+        
+        polygon.addTo(pollutionLayer);
     });
   }, [pollutionData]);
 
