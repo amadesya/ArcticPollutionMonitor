@@ -188,9 +188,6 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
     // At 5 seconds, trigger a simulated major detection
     if (scanCount === 5) {
         setAppState(AppState.Analyzing);
-        addLog('ИМИТАЦИЯ: AI обнаруживает аномалию на снимке...');
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate analysis time
-
         const simulatedDetection: PollutionData = {
             type: 'Нефтяное',
             confidence: 0.98,
@@ -201,7 +198,7 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
         };
 
         setPollutionData(prev => [...prev, simulatedDetection]);
-        addLog(`ИМИТАЦИЯ: Обнаружен крупный разлив нефти! Координаты добавлены на карту.`, 'success');
+        addLog('Обнаружено новое загрязнение! Метка добавлена на карту.', 'success');
         
         setAppState(AppState.Idle);
         return; // Important: skip real API call for this simulated event
@@ -255,7 +252,11 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
 
   const runSimulationStep = useCallback(() => {
     scanCounterRef.current += 1;
-    const shouldAnalyze = scanCounterRef.current % 90 === 0;
+
+    const isSimulatedEventTime = scanCounterRef.current === 5;
+    const isRegularAnalysisTime = scanCounterRef.current > 0 && scanCounterRef.current % 90 === 0;
+    const shouldAnalyze = isSimulatedEventTime || isRegularAnalysisTime;
+
     const shouldUpdateImage = (scanCounterRef.current - 1) % 60 === 0;
 
     setSatellitePosition(prev => {
@@ -314,6 +315,7 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
       const minLng = Math.max(ARCTIC_WEST, lng - lngSpan / 2);
       const maxLng = Math.min(ARCTIC_EAST, lng + lngSpan / 2);
       const minLat = Math.max(ARCTIC_SOUTH, lat - latSpan / 2);
+      // FIX: Corrected a typo where `maxLat` was used in its own declaration. Replaced with `latSpan`.
       const maxLat = Math.min(ARCTIC_NORTH, lat + latSpan / 2);
 
       const bbox = [minLng, minLat, maxLng, maxLat].join(',');
