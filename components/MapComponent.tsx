@@ -199,4 +199,5 @@ const MapComponent: React.FC<MapComponentProps> = ({ satellitePosition, pollutio
   return <div ref={mapContainerRef} className="h-full w-full" />;
 };
 
+
 export default MapComponent;

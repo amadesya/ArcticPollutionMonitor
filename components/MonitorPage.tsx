@@ -129,6 +129,7 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
   const simulationIntervalRef = useRef<number | null>(null);
   const scanCounterRef = useRef<number>(0);
   const isAnalyzingRef = useRef<boolean>(false);
+  const patrolDirectionRef = useRef<'forward' | 'backward'>('forward');
 
 
   const addLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
@@ -197,7 +198,8 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
     try {
       const base64 = await imageToBase64(imageUrl);
       const result = await analyzeImage(base64);
-      if (result.length > 0) {
+      // FIX: Add type guard to ensure result is an array before accessing .length
+      if (Array.isArray(result) && result.length > 0) {
         const newData: PollutionData[] = result.map(p => ({
           type: p.type || 'Нефтяное',
           confidence: p.confidence || 0.8,
@@ -220,95 +222,96 @@ const MonitorPage: React.FC<MonitorPageProps> = ({ onNavigateHome }) => {
     }
   }, [addLog]);
 
-  // === UPDATED: Simulation Step with back-and-forth patrol ===
-const patrolDirectionRef = useRef<'forward' | 'backward'>('forward'); // Убедись, что это объявлено выше
+  const runSimulationStep = useCallback(() => {
+    scanCounterRef.current += 1;
+    const shouldAnalyze = scanCounterRef.current % 90 === 0;
+    const shouldUpdateImage = (scanCounterRef.current - 1) % 60 === 0;
 
-const runSimulationStep = useCallback(() => {
-  scanCounterRef.current += 1;
-  const shouldAnalyze = scanCounterRef.current % 90 === 0;
+    setSatellitePosition(prev => {
+      const SPEED_KPH = 700; // Реалистичная скорость (например, разведчик)
+      const INTERVAL_H = SIMULATION_INTERVAL_MS / 3600000; // 1000 мс → 1/3600 часа
 
-  setSatellitePosition(prev => {
-    const SPEED_KPH = 700; // Реалистичная скорость (например, разведчик)
-    const INTERVAL_H = SIMULATION_INTERVAL_MS / 3600000; // 1000 мс → 1/3600 часа
+      // === Текущие точки: зависят от направления ===
+      const isForward = patrolDirectionRef.current === 'forward';
+      const startPoint = isForward ? PATROL_START_POINT : PATROL_END_POINT;
+      const endPoint   = isForward ? PATROL_END_POINT : PATROL_START_POINT;
 
-    // === Текущие точки: зависят от направления ===
-    const isForward = patrolDirectionRef.current === 'forward';
-    const startPoint = isForward ? PATROL_START_POINT : PATROL_END_POINT;
-    const endPoint   = isForward ? PATROL_END_POINT : PATROL_START_POINT;
+      // === Дельты (от старта к концу) ===
+      const dLat = endPoint.lat - startPoint.lat;
+      let dLng = endPoint.lng - startPoint.lng;
+      dLng = ((dLng + 180) % 360 + 360) % 360 - 180; // Кратчайший путь
 
-    // === Дельты (от старта к концу) ===
-    const dLat = endPoint.lat - startPoint.lat;
-    let dLng = endPoint.lng - startPoint.lng;
-    dLng = ((dLng + 180) % 360 + 360) % 360 - 180; // Кратчайший путь
+      // === Расстояние (км) ===
+      const avgLat = (startPoint.lat + endPoint.lat) / 2;
+      const cosLat = Math.cos(avgLat * Math.PI / 180);
+      const distKm = Math.hypot(dLat * 111.32, dLng * 111.32 * cosLat);
 
-    // === Расстояние (км) ===
-    const avgLat = (startPoint.lat + endPoint.lat) / 2;
-    const cosLat = Math.cos(avgLat * Math.PI / 180);
-    const distKm = Math.hypot(dLat * 111.32, dLng * 111.32 * cosLat);
+      // === Шагов на участок ===
+      const totalSteps = Math.ceil(distKm / (SPEED_KPH * INTERVAL_H));
 
-    // === Шагов на участок ===
-    const totalSteps = Math.ceil(distKm / (SPEED_KPH * INTERVAL_H));
+      // === Шаг ===
+      let step = (prev.stepIndex ?? 0) + 1;
 
-    // === Шаг ===
-    let step = (prev.stepIndex ?? 0) + 1;
+      // === Переключение направления ===
+      if (step >= totalSteps) {
+        const newDir = isForward ? 'backward' : 'forward';
+        patrolDirectionRef.current = newDir;
+        step = 0;
 
-    // === Переключение направления ===
-    if (step >= totalSteps) {
-      const newDir = isForward ? 'backward' : 'forward';
-      patrolDirectionRef.current = newDir;
-      step = 0;
+        addLog(
+          newDir === 'forward'
+            ? 'Достигнута юго-восточная точка. Возвращение на северо-запад.'
+            : 'Достигнута северо-западная точка. Возвращение на юго-восток.',
+          'success'
+        );
+      }
 
-      addLog(
-        newDir === 'forward'
-          ? 'Достигнута юго-восточная точка. Возвращение на северо-запад.'
-          : 'Достигнута северо-западная точка. Возвращение на юго-восток.',
-        'success'
-      );
-    }
+      // === Прогресс (0..1) ===
+      const progress = step / totalSteps;
 
-    // === Прогресс (0..1) ===
-    const progress = step / totalSteps;
+      // === Координаты: линейная интерполяция от start → end ===
+      const lat = startPoint.lat + dLat * progress;
+      let lng = startPoint.lng + dLng * progress;
+      lng = ((lng + 180) % 360 + 360) % 360 - 180; // Нормализация
 
-    // === Координаты: линейная интерполяция от start → end ===
-    const lat = startPoint.lat + dLat * progress;
-    let lng = startPoint.lng + dLng * progress;
-    lng = ((lng + 180) % 360 + 360) % 360 - 180; // Нормализация
+      // === Курс: 135° вперёд, 315° назад ===
+      const heading = isForward ? PATROL_HEADING : (PATROL_HEADING + 180) % 360;
 
-    // === Курс: 135° вперёд, 315° назад ===
-    const heading = isForward ? PATROL_HEADING : (PATROL_HEADING + 180) % 360;
+      const dataRate = 500 + (Math.random() - 0.5) * 50;
+      const pos: SatellitePosition = { lat, lng, heading, dataRate, stepIndex: step };
 
-    const dataRate = 500 + (Math.random() - 0.5) * 50;
-    const pos: SatellitePosition = { lat, lng, heading, dataRate, stepIndex: step };
+      // === BBOX (35 км) ===
+      const SCAN_KM = 35;
+      const KM_PER_DEG_LAT = 111.32;
+      const latSpan = SCAN_KM / KM_PER_DEG_LAT;
+      const lngSpan = SCAN_KM / (KM_PER_DEG_LAT * Math.cos(lat * Math.PI / 180));
 
-    // === BBOX (35 км) ===
-    const SCAN_KM = 35;
-    const KM_PER_DEG_LAT = 111.32;
-    const latSpan = SCAN_KM / KM_PER_DEG_LAT;
-    const lngSpan = SCAN_KM / (KM_PER_DEG_LAT * Math.cos(lat * Math.PI / 180));
+      const minLng = Math.max(ARCTIC_WEST, lng - lngSpan / 2);
+      const maxLng = Math.min(ARCTIC_EAST, lng + lngSpan / 2);
+      const minLat = Math.max(ARCTIC_SOUTH, lat - latSpan / 2);
+      const maxLat = Math.min(ARCTIC_NORTH, lat + latSpan / 2);
 
-    const minLng = Math.max(ARCTIC_WEST, lng - lngSpan / 2);
-    const maxLng = Math.min(ARCTIC_EAST, lng + lngSpan / 2);
-    const minLat = Math.max(ARCTIC_SOUTH, lat - latSpan / 2);
-    const maxLat = Math.min(ARCTIC_NORTH, lat + latSpan / 2);
+      const bbox = [minLng, minLat, maxLng, maxLat].join(',');
+      const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&size=512,512&format=jpg&f=image`;
+      
+      if (shouldUpdateImage) {
+        setCurrentSatelliteImage(url);
+      }
 
-    const bbox = [minLng, minLat, maxLng, maxLat].join(',');
-    const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&size=512,512&format=jpg&f=image`;
-    setCurrentSatelliteImage(url);
+      addLog(`Спутник: ${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E | Курс: ${heading}°`);
 
-    addLog(`Спутник: ${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E | Курс: ${heading}°`);
+      // === Анализ ===
+      if (shouldAnalyze && !isAnalyzingRef.current) {
+        setAppState(AppState.Scanning);
+        isAnalyzingRef.current = true;
+        analyzePosition(pos, url).finally(() => { isAnalyzingRef.current = false; });
+      } else if (!isAnalyzingRef.current) {
+        setAppState(AppState.Idle);
+      }
 
-    // === Анализ ===
-    if (shouldAnalyze && !isAnalyzingRef.current) {
-      setAppState(AppState.Scanning);
-      isAnalyzingRef.current = true;
-      analyzePosition(pos, url).finally(() => { isAnalyzingRef.current = false; });
-    } else if (!isAnalyzingRef.current) {
-      setAppState(AppState.Idle);
-    }
-
-    return pos;
-  });
-}, [addLog, analyzePosition]);
+      return pos;
+    });
+  }, [addLog, analyzePosition]);
 
   // === Simulation Loop ===
   useEffect(() => {
@@ -362,5 +365,6 @@ const runSimulationStep = useCallback(() => {
     </div>
   );
 };
+
 
 export default MonitorPage;
